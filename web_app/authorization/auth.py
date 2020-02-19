@@ -3,50 +3,95 @@ import hashlib, binascii, os
 
 auth_blueprint = Blueprint("auth", __name__)
 
+
 @auth_blueprint.route("/register", methods=["GET", "POST"])
 def register():
+    """
+       Функция регистрации пользователя
+    :return: Страницы Login или Register
+    """
     if request.method == "POST":
+        # Достаем из формы данные пользователя
         username = request.form["FirstName"]
         lastname = request.form["LastName"]
         email = request.form["Email"]
         password = request.form["Password"]
         repeat_password = request.form["RepeatPassword"]
-        if password != repeat_password:
-            flash("Ошибка при вводе паролей")
+        # Проверяем был ли зарегистрирован пользователь с таким
+        # же адресом электронной почты
+        cur = g.db.cursor()
+        sql = "SELECT id, name, password FROM USERS WHERE email=?"
+        cur.execute(sql, (email,))
+        row = cur.fetchone()
+        # Если пользователя с таким же адресом Email нет, то регистрируем его
+        if not row:
+            # Проверяем пароль
+            if password != repeat_password:
+                flash("Ошибка при вводе паролей")
+            else:
+                # Шифруем пароль
+                h_password = hash_password(password)
+                # Заносим данные о пользователе в БД
+                sql = "INSERT INTO users (name, last_name, email, password, created) VALUES (?,?,?,?, datetime('now', 'localtime'))"
+                cur.execute(sql, (username, lastname, email, h_password))
+                g.db.commit()
+                # Отправляем пользователя на страницу авторизации
+                return redirect("login")
         else:
-            h_password = hash_password(password)
-            cur = g.db.cursor()
-            sql = "INSERT INTO users (name, last_name, email, password, created) VALUES (?,?,?,?, datetime('now', 'localtime'))"
-            cur.execute(sql, (username, lastname, email, h_password))
-            g.db.commit()
-            return redirect("login")
+            # Если пользователь с таким же адресом существует, то выдаем ошибку
+            flash("Такой пользователь уже зарегистрирован. Используйте другой адрес электронной почты.")
+            return redirect("register")
     return render_template("register.html")
 
 
 @auth_blueprint.route("/login", methods=["GET", "POST"])
 def login():
+    """
+        Функция авторизации
+    :return:
+    """
     if request.method == "POST":
+        # Достаем из формы данные о пользователе
         email = request.form["Email"]
         password = request.form["Password"]
+        # Находим пользователя в БД
         cur = g.db.cursor()
         sql = "SELECT id, name, password FROM USERS WHERE email=?"
         cur.execute(sql, (email,))
         row = cur.fetchone()
+        # Если пользователь не найден выдаем сообщение об ошибке
         if not row:
             flash("Такой пользователь не зарегестрирован.")
         else:
+            # Если пользователь существует
             user_id = row[0]
             user_name = row[1]
             h_password = row[2]
+            # Проверяем правильность введеного пароля
             if verify_password(h_password, password):
+                # Если пароль указан правильно, то отправляем пользователя на главную страницу
                 session["user_name"] = user_name
                 session["user_id"] = user_id
                 return redirect("index")
             else:
+                # Если пароль не правильный, то выдаем сообщение об ошибке
                 flash("Указан неверный пароль")
 
     return render_template("login.html")
 
+
+@auth_blueprint.route("/logout", methods=["POST","GET"])
+def logout():
+    """
+        Функция завершения сессии работы
+    :return:
+    """
+    if request.method == "POST":
+        # Удаляем из сессии атрибуты пользователя
+        del session["user_id"]
+        del session["user_name"]
+        return redirect("login")
+    return render_template("logout.html")
 
 @auth_blueprint.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():

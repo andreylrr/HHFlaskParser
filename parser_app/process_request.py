@@ -1,12 +1,13 @@
-import hhrequest as hr
-import hhparser_description as hp
-import hhparser_key_skills as hk
-import hhparser_salary as hs
+import parser_app.hhrequest as hr
+import parser_app.hhparser_description as hp
+import parser_app.hhparser_key_skills as hk
+import parser_app.hhparser_salary as hs
 import requests as req
 import configparser as cfg
 import sqlite3 as sql
 import time
 import json
+import sys
 
 
 def add_skills(sum_skills: dict, skills_to_add: list):
@@ -128,8 +129,8 @@ def process_request(db_path, file_folder, db_row):
         d_sum: dict = {"salary": d_salary, "description": d_skills_description_sorted, "keyskills": d_skills_sorted}
 
         # Записываем словарь в формате json в файл, в указанный каталог
-        file_name: str = str(db_row[0]) + "-" + db_row[1] + "-" + time.strftime("%Y%m%d%H%M", time.localtime())
-        with open(file_folder + "/" + file_name, "w") as f:
+        file_name: str = file_folder + "/" + str(db_row[0]) + "-" + "".join(db_row[2]) + "-" + db_row[1] + "-" + time.strftime("%Y%m%d%H%M", time.localtime())
+        with open(file_name, "w") as f:
             json.dump(d_sum, f)
         # Обновляем запись с результатами запроса
         update_request(db_path, db_row, file_name, i_number_vacancies)
@@ -213,24 +214,29 @@ def update_status(db_path, db_row, status):
     db_connection.close()
 
 
-if __name__ == '__main__':
-
+def main():
     # Читаем конфигурационные параметры
     config = cfg.ConfigParser()
     config.read("hh_config.ini")
     sqlite_db = config["SQLite"]["path"]
     file_folder = config["Json"]["path"]
 
+    i_cycle: int = 0
     while True:
         # Читаем записи со статусом 0 из БД
         rows = read_requests(sqlite_db)
         if rows:
             # Если записи найдены, то начинаем обработку
             for row in rows:
-                print(f"Обработка запроса: {row[1]} {row[2]} начата.")
+                print(f"\nОбработка запроса: {row[1]} {row[2]} начата.")
                 process_request(sqlite_db, file_folder, row)
                 print(f"Обработка запроса: {row[1]} {row[2]} завершена.")
         else:
             # Переходим в режим ожидания
             time.sleep(5)
-            print("Новых запросов не найдено.")
+            sys.stdout.write("\r")
+            sys.stdout.write(f"Новых запросов не найдено. Цикл {i_cycle}")
+        i_cycle += 1
+
+if __name__ == "__main__":
+    main()

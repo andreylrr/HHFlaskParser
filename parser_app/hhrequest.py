@@ -28,6 +28,7 @@ class HHRequest():
         j_result = req.get('https://api.hh.ru/suggests/areas', params=j_params).json()
         if j_result["items"]:
             self.i_region_id = j_result["items"][0]["id"]
+            return j_result
         else:
             raise ValueError("Регион не найден.")
 

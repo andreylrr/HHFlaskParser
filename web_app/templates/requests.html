@@ -88,9 +88,15 @@
 
                 <!-- Topbar Navbar -->
                 <ul class="navbar-nav ml-auto">
+                  {% if session["user_id"] is defined %}
+                    <a class="nav-link" href="logout">
+                    <i class="fas fa-fw"></i>
+                      <span>{{session["user_name"]}}</span></a>
+                  {% else %}
                     <a class="nav-link" href="login">
-                        <i class="fas fa-fw"></i>
-                        <span>Войти</span></a>
+                    <i class="fas fa-fw"></i>
+                    <span>Войти</span></a>
+                  {% endif %}
                 </ul>
 
             </nav>
@@ -110,23 +116,23 @@
                                     <div class="form-group row">
                                         <div class="col-sm-6 mb-3 mb-sm-0">
                                             <input type="text" class="form-control form-control-user"
-                                                   id="Region" placeholder="Регион">
+                                                   id="Region" name="Region" placeholder="Регион" required>
                                         </div>
-                                        {% for message in get_flashed_messages() %}
-                                           <div class="alert alert-warning">
-                                              <button type="button" class="close" data-dismiss="alert">&times;</button>
-                                              {{ message }}
-                                           </div>
-                                        {% endfor %}
                                     </div>
                                     <div class="form-group">
                                         <input type="text" class="form-control form-control-user"
-                                               id="TextRequest" placeholder="Строка поиска">
+                                               id="Request" name="Request" placeholder="Строка поиска" required>
                                     </div>
-                                    <a href="login" class="btn btn-secondary btn-user btn-block">
-                                        Передать запрос на сервер
-                                    </a>
+                                    <button type="submit" placeholder="Передать запрос на вервер" class="btn btn-primary btn-user btn-block">
+                                        Передать запрос на обработку
+                                    </button>
                                 </form>
+                                {% for message in get_flashed_messages() %}
+                                   <div class="alert alert-warning">
+                                      <button type="button" class="close" data-dismiss="alert">&times;</button>
+                                      {{ message }}
+                                   </div>
+                                {% endfor %}
                             </div>
                         </div>
                         <div class="figure-img offset-2 col-1">
