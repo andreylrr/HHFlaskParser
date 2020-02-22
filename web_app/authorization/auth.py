@@ -1,5 +1,8 @@
 from flask import Blueprint, render_template, request, session, g, redirect, url_for, abort, flash
 import hashlib, binascii, os
+from web_app.database import db_session
+from web_app.models import User, Request
+from datetime import datetime
 
 auth_blueprint = Blueprint("auth", __name__)
 
@@ -19,10 +22,7 @@ def register():
         repeat_password = request.form["RepeatPassword"]
         # Проверяем был ли зарегистрирован пользователь с таким
         # же адресом электронной почты
-        cur = g.db.cursor()
-        sql = "SELECT id, name, password FROM USERS WHERE email=?"
-        cur.execute(sql, (email,))
-        row = cur.fetchone()
+        row = db_session.query(User).filter(User.email == email).all()
         # Если пользователя с таким же адресом Email нет, то регистрируем его
         if not row:
             # Проверяем пароль
@@ -31,10 +31,9 @@ def register():
             else:
                 # Шифруем пароль
                 h_password = hash_password(password)
-                # Заносим данные о пользователе в БД
-                sql = "INSERT INTO users (name, last_name, email, password, created) VALUES (?,?,?,?, datetime('now', 'localtime'))"
-                cur.execute(sql, (username, lastname, email, h_password))
-                g.db.commit()
+                user = User(username, lastname, email, datetime.now(), h_password)
+                db_session.add(user)
+                db_session.commit()
                 # Отправляем пользователя на страницу авторизации
                 return redirect("login")
         else:
@@ -55,18 +54,15 @@ def login():
         email = request.form["Email"]
         password = request.form["Password"]
         # Находим пользователя в БД
-        cur = g.db.cursor()
-        sql = "SELECT id, name, password FROM USERS WHERE email=?"
-        cur.execute(sql, (email,))
-        row = cur.fetchone()
+        row = db_session.query(User).filter(User.email==email).all()
         # Если пользователь не найден выдаем сообщение об ошибке
         if not row:
             flash("Такой пользователь не зарегестрирован.")
         else:
             # Если пользователь существует
-            user_id = row[0]
-            user_name = row[1]
-            h_password = row[2]
+            user_id = row[0].id
+            user_name = row[0].name
+            h_password = row[0].password
             # Проверяем правильность введеного пароля
             if verify_password(h_password, password):
                 # Если пароль указан правильно, то отправляем пользователя на главную страницу
