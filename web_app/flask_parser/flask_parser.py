@@ -1,11 +1,14 @@
-from flask import Blueprint, render_template, request, session, g, redirect, flash
+from flask import Blueprint, render_template, request, session, redirect, flash
 import parser_app.hhrequest as hr
 from flask_table import Table, Col, LinkCol
 import json
 from web_app.database import db_session
-from web_app.models import User, Request
+from web_app.models import User, Request, Contact
 from sqlalchemy import desc
 from datetime import datetime
+from flask import current_app
+from flask_mail import Mail, Message
+
 
 
 parser_blueprint = Blueprint("flask_parser", __name__)
@@ -67,10 +70,7 @@ def single_item(id):
         element = Item.get_element_by_id(id)
         # Достаем из БД имя файла с результатами обработки запроса
         row: Request = db_session.query(Request).filter(Request.id == element.request_id).one()
-        if row.file_name is None:
-            return render_template("request-view.html", description=[],
-                                   keyskills=[], salaries=[])
-        else:
+        if row.file_name is not None:
             # Читаем результаты обработки запроса из файла
             with open(row.file_name, "r") as f:
                 result: json = json.load(f)
@@ -94,6 +94,9 @@ def single_item(id):
             # Возвращаем страницу с результатами запроса
             return render_template("request-view.html", description=sum_description,
                                    keyskills=sum_keyskills, salaries=sum_salaries)
+        else:
+            return render_template("request-view.html", description=[],
+                                   keyskills=[], salaries=[])
     else:
         return redirect("/login")
 
@@ -186,3 +189,8 @@ def requests():
         # Если пользователь не авторизован то отправляем его в Login
         return redirect("login")
     return render_template("requests.html")
+
+
+
+
+

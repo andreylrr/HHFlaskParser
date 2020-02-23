@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from web_app.database import Base
 from datetime import datetime
@@ -53,3 +53,20 @@ class Request(Base):
     def __repr__(self):
         return f'Request {self.region} {self.text_request}'
 
+
+class Contact(Base):
+    __tablename__ = "contacts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    text = Column(Text(500))
+    email = Column(String(100))
+    name = Column(String(100))
+
+    def __init__(self, id=None, name=None, text=None, email=None):
+        self.id = id
+        self.text = text
+        self.email = email
+        self.name = name
+
+    def __repr__(self):
+        return f'Request {self.id} {self.email} {self.name}'

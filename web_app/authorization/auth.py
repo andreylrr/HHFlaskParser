@@ -1,8 +1,10 @@
 from flask import Blueprint, render_template, request, session, g, redirect, url_for, abort, flash
 import hashlib, binascii, os
 from web_app.database import db_session
-from web_app.models import User, Request
+from web_app.models import User, Request, Contact
 from datetime import datetime
+from flask import current_app
+from flask_mail import Mail, Message
 
 auth_blueprint = Blueprint("auth", __name__)
 
@@ -89,12 +91,37 @@ def logout():
         return redirect("login")
     return render_template("logout.html")
 
+
 @auth_blueprint.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     return render_template("forgot-password.html")
 
+
 @auth_blueprint.route("/contacts", methods=["GET", "POST"])
 def contacts():
+    """
+        Функция обработки запроса к странице Контакты
+    :return:
+    """
+    if request.method == "POST":
+        # Заносим полученные данные из формы в БД
+        name = request.form["name"]
+        email = request.form["email"]
+        text = request.form["question"]
+        db_session.add(Contact(name=name, email=email, text=text))
+        db_session.commit()
+        # Отправляем запрос пол электронной почте
+        mail = Mail(current_app)
+        try:
+            msg = Message(f"{name} contacted us.",
+                          sender=email,
+                          recipients=["andreylr1@yahoo.com"])
+            msg.body = text
+            mail.send(msg)
+            flash("Ваш запрос отправлен.")
+        except Exception as e:
+            flash(f"При отправке вашего запроса произошла ошибка: {e}")
+
     return render_template("contacts.html")
 
 
