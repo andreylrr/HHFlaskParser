@@ -113,27 +113,33 @@
                                 <div class="text-center">
                                     <h1 class="h4 text-gray-900 mb-4">Написать нам</h1>
                                 </div>
-                                <form class="user">
+                                <form class="user" method="POST">
                                     <div class="form-control-user row">
                                         <h1 class="h5 fa-2x text-gray-900">Ваше имя:</h1>
                                         <input type="text" class="form-control text-center text-info"
-                                               id="YourName" placeholder="Ваше Имя">
+                                               name="name" id="YourName" placeholder="Ваше Имя">
                                     </div>
                                     <div class="form-control-user row">
                                         <h1 class="h5 fa-2x text-gray-900">Ваш E-mail:</h1>
                                         <input type="email" class="form-control text-center"
-                                               id="YorEmail" placeholder="Ваш E-mail">
+                                               name="email" id="YorEmail" placeholder="Ваш E-mail">
                                     </div>
                                     <div class="form-control-plaintext">
                                         <h1 class="h5 fa-2x text-gray-900">Ваш вопрос:</h1>
                                         <textarea type="text" class="form-control row=50"
-                                                  id="YorQuestion" placeholder="Ваш вопрос">
+                                                  name="question" id="YorQuestion" placeholder="Ваш вопрос">
                                         </textarea>
                                     </div>
-                                    <a href="login" class="btn btn-secondary btn-user btn-block">
+                                    <button type="submit" placeholder="Отправить" class="btn btn-primary btn-user btn-block">
                                         Отправить
-                                    </a>
+                                    </button>
                                 </form>
+                            {% for message in get_flashed_messages() %}
+                                <div class="alert alert-warning">
+                                <button type="button" class="close" data-dismiss="alert">&times;</button>
+                                {{ message }}
+                                </div>
+                            {% endfor %}
                             </div>
                         </div>
                         <div class="figure-img offset-1 col-1">

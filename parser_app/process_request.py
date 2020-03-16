@@ -3,11 +3,11 @@ import parser_app.hhparser_description as hp
 import parser_app.hhparser_key_skills as hk
 import parser_app.hhparser_salary as hs
 import requests as req
-import configparser as cfg
-import sqlite3 as sql
+from sqlalchemy import create_engine, desc, update
+from datetime import datetime
 import time
 import json
-import sys
+from web_app.models import User, Request
 
 
 def add_skills(sum_skills: dict, skills_to_add: list):
@@ -60,7 +60,7 @@ def avg_salary(all_salary: dict) -> dict:
     return all_salary
 
 
-def process_request(db_path, file_folder, db_row):
+def process_request(db_path, file_folder, row_request):
     '''
         Функция обработки запроса, прочитанного из БД
     :param db_path: путь к БД
@@ -69,7 +69,7 @@ def process_request(db_path, file_folder, db_row):
     '''
 
     # Меняем статус на "В обработке"
-    update_status(db_path, db_row, 1)
+    update_status(db_path, row_request, 1)
     # Задаем начальные значения поиска
     s_url = 'https://api.hh.ru/vacancies?area=#'
 
@@ -86,16 +86,16 @@ def process_request(db_path, file_folder, db_row):
     o_hhrequest.set_url(s_url)
 
     # Запрашиваем регион поиска у пользователя
-    o_hhrequest.set_region(db_row[1])
+    o_hhrequest.set_region(row_request.region)
 
     # Передаем строку поиска управляющему классу
-    o_hhrequest.set_search_pattern(db_row[2])
+    o_hhrequest.set_search_pattern(row_request.text_request)
 
     # Получаем список urls вакансий, удовлетворяющих критерию поиска
     l_urls = o_hhrequest.get_urls_vacancies()
 
     if not l_urls:
-        update_status(db_path, db_row, 2)
+        update_status(db_path, row_request, 2)
         print("По Вашему запросу вакансий не найдено")
     else:
         i_number_vacancies = 0
@@ -129,114 +129,54 @@ def process_request(db_path, file_folder, db_row):
         d_sum: dict = {"salary": d_salary, "description": d_skills_description_sorted, "keyskills": d_skills_sorted}
 
         # Записываем словарь в формате json в файл, в указанный каталог
-        file_name: str = file_folder + "/" + str(db_row[0]) + "-" + "".join(db_row[2]) + "-" + db_row[1] + "-" + time.strftime("%Y%m%d%H%M", time.localtime())
+        file_name: str = file_folder + "/" + str(row_request.user_id) + "-" + "".join(row_request.text_request) + "-"\
+                                     + row_request.region + "-" + time.strftime("%Y%m%d%H%M", time.localtime())
         with open(file_name, "w") as f:
             json.dump(d_sum, f)
         # Обновляем запись с результатами запроса
-        update_request(db_path, db_row, file_name, i_number_vacancies)
+        update_request(db_path, row_request, file_name, i_number_vacancies)
 
 
-def read_requests(db_path):
+def read_requests(db_session):
     """
          Функция чтения запросов из БД
-    :param db_path: путь к БД
+    :param db_session: сессия БД
     :return: список найденных записей
     """
-    try:
-        # Устанавливаем связь с БД
-        db_connection = sql.connect(db_path)
-        cursor = db_connection.cursor()
-    except Exception as ex:
-        print(f"Error during establishing connection to DB\n{ex}")
-        return
-
-    # Выбираем все запросу для данного пользователя из БД
-    sql_statement: str = '''SELECT user_id, region, text_request, id from requests where status = 0'''
-    cursor.execute(sql_statement)
-    row = cursor.fetchall()
-    # Закрываем связь с БД
-    cursor.close()
-    db_connection.close()
+    # Выбираем все запросы из БД со статусом 0
+    row = db_session.query(Request).filter(Request.status == 0).order_by(desc(Request.created)).all()
     return row
 
 
-def update_request(db_path, db_row, file_name, number_vacancies):
+def update_request(db_session, row_request, file_name, number_vacancies):
     """
         Функция обновления записи запроса в БД
-    :param db_path: путь к БД
+    :param db_session: сессия БД
     :param db_row: запись, которую надо обновить
     :param file_name: имя файла с результатами
     :param number_vacancies: количество вакансий
     """
-    try:
-        # Устанавливаем связь с БД
-        db_connection = sql.connect(db_path)
-        cursor = db_connection.cursor()
-    except Exception as ex:
-        print(f"Error during establishing connection to DB\n{ex}")
-        return
-
     # Формируем запрос к БД
-    sql_statement: str = '''UPDATE requests SET file_name = ?, vacancy_number = ?, status = 2,''' \
-                         '''updated=datetime('now', 'localtime') WHERE id = ?'''
-    cursor.execute(sql_statement, (file_name, number_vacancies, db_row[3]))
-    db_connection.commit()
-    # Закрываем связь с БД
-    cursor.close()
-    db_connection.close()
+    db_session.query(Request).filter(Request.id == row_request.id).\
+        update({Request.file_name: file_name, Request.vacancy_number: number_vacancies, Request.status: 2})
+    db_session.commit()
 
 
-def update_status(db_path, db_row, status):
+def update_status(db_session, row_request, status):
     """
         Функция изменеия статуса запроса в БД
-    :param db_path: путь к БД
+    :param db_session: сессия БД
     :param db_row: запись, статус в которой надо обновить
     :param status: статус
     """
-    try:
-        # Устанавливаем связь с БД
-        db_connection = sql.connect(db_path)
-        cursor = db_connection.cursor()
-    except Exception as ex:
-        print(f"Error during establishing connection to DB\n{ex}")
-        return
-
     # Если статус меняется на один (В обработке), то не надо изменять кол-во вакансий
     if status == 1:
-        sql_statement: str = '''UPDATE requests SET status = ?, updated=datetime('now', 'localtime') WHERE id = ?'''
+        db_session.query(Request).filter(Request.id == row_request.id).\
+            update({Request.status : status, Request.updated: datetime.now()}, synchronize_session=False)
+        db_session.commit()
     else:
-        sql_statement: str = '''UPDATE requests SET status = ?, vacancy_number = 0, updated=datetime('now','local')WHERE id = ? '''
-
-    cursor.execute(sql_statement, (status, db_row[3]))
-    db_connection.commit()
-    # Закрываем связь с БД
-    cursor.close()
-    db_connection.close()
+        db_session.query(Request).filter(Request.id == row_request.id).\
+            update({Request.status : status, Request.vacancy_number: 0, Request.updated: datetime.now()}, synchronize_session=False)
+        db_session.commit()
 
 
-def main():
-    # Читаем конфигурационные параметры
-    config = cfg.ConfigParser()
-    config.read("hh_config.ini")
-    sqlite_db = config["SQLite"]["path"]
-    file_folder = config["Json"]["path"]
-
-    i_cycle: int = 0
-    while True:
-        # Читаем записи со статусом 0 из БД
-        rows = read_requests(sqlite_db)
-        if rows:
-            # Если записи найдены, то начинаем обработку
-            for row in rows:
-                print(f"\nОбработка запроса: {row[1]} {row[2]} начата.")
-                process_request(sqlite_db, file_folder, row)
-                print(f"Обработка запроса: {row[1]} {row[2]} завершена.")
-        else:
-            # Переходим в режим ожидания
-            time.sleep(5)
-            sys.stdout.write("\r")
-            sys.stdout.write(f"Новых запросов не найдено. Цикл {i_cycle}")
-        i_cycle += 1
-
-if __name__ == "__main__":
-    main()

@@ -1,7 +1,15 @@
-from flask import Blueprint, render_template, request, session, g, redirect, flash
+from flask import Blueprint, render_template, request, session, redirect, flash
 import parser_app.hhrequest as hr
 from flask_table import Table, Col, LinkCol
 import json
+from web_app.database import db_session
+from web_app.models import User, Request, Contact
+from sqlalchemy import desc
+from datetime import datetime
+from flask import current_app
+from flask_mail import Mail, Message
+
+
 
 parser_blueprint = Blueprint("flask_parser", __name__)
 
@@ -61,33 +69,34 @@ def single_item(id):
         # Достаем из списка требуемый элемент
         element = Item.get_element_by_id(id)
         # Достаем из БД имя файла с результатами обработки запроса
-        cur = g.db.cursor()
-        sql = "SELECT file_name FROM requests WHERE id = ?"
-        cur.execute(sql, (element.request_id,))
-        row = cur.fetchone()
-        # Читаем результаты обработки запроса из файла
-        with open(row[0], "r") as f:
-            result: json = json.load(f)
-        # Обрабатываем результаты запроса
-        description_skills: dict = result['description']
-        key_skills: dict = result['keyskills']
-        salary_average: dict = result['salary']
-        # Для навыков из описания
-        sum_description: list = []
-        for key, value in list(description_skills.items())[:10]:
-            sum_description.append( key + " - " + str(value) + "%")
-        # Для навыков из ключевых навыков
-        sum_keyskills: list = []
-        for key, value in list(key_skills.items())[:10]:
-            sum_keyskills.append(key + " - " + str(value) + "%")
-        sum_salaries: list = []
-        # Для зарплат
-        for key, value in salary_average.items():
-            sum_salaries.append(key + "   от: " + '{:6.0f}'.format(value[0]) + "₽.  до: " + '{:6.0f}'.format(value[1]) + "₽.")
+        row: Request = db_session.query(Request).filter(Request.id == element.request_id).one()
+        if row.file_name is not None:
+            # Читаем результаты обработки запроса из файла
+            with open(row.file_name, "r") as f:
+                result: json = json.load(f)
+            # Обрабатываем результаты запроса
+            description_skills: dict = result['description']
+            key_skills: dict = result['keyskills']
+            salary_average: dict = result['salary']
+            # Для навыков из описания
+            sum_description: list = []
+            for key, value in list(description_skills.items())[:10]:
+                sum_description.append( key + " - " + str(value) + "%")
+            # Для навыков из ключевых навыков
+            sum_keyskills: list = []
+            for key, value in list(key_skills.items())[:10]:
+                sum_keyskills.append(key + " - " + str(value) + "%")
+            sum_salaries: list = []
+            # Для зарплат
+            for key, value in salary_average.items():
+                sum_salaries.append(key + "   от: " + '{:6.0f}'.format(value[0]) + "₽.  до: " + '{:6.0f}'.format(value[1]) + "₽.")
 
-        # Возвращаем страницу с результатами запроса
-        return render_template("request-view.html", description=sum_description,
-                               keyskills=sum_keyskills, salaries=sum_salaries)
+            # Возвращаем страницу с результатами запроса
+            return render_template("request-view.html", description=sum_description,
+                                   keyskills=sum_keyskills, salaries=sum_salaries)
+        else:
+            return render_template("request-view.html", description=[],
+                                   keyskills=[], salaries=[])
     else:
         return redirect("/login")
 
@@ -111,29 +120,27 @@ class Item(object):
         :return: список запросов
         """
         # Читаем из БД список запросов для текущего пользователя
-        cur = g.db.cursor()
-        sql = "SELECT id, region, text_request, file_name, status, created, vacancy_number FROM requests WHERE user_id = ? ORDER BY created desc"
-        cur.execute(sql, (session["user_id"],))
-        rows = cur.fetchall()
+        rows = db_session.query(Request).filter(Request.user_id == session["user_id"]).order_by(desc(Request.created)).all()
         id_n = 1
         items_for_table = []
         # Обрабатываем полученный список
-        for row in rows:
+        for row_request in rows:
             # Вместо None устанавливаем количество вакансий в 0
-            vac_numbers = row[6]
-            if not row[6]:
+            vac_numbers = row_request.vacancy_number
+            if not row_request.vacancy_number:
                 vac_numbers = 0
             # Обрабатываем статус запроса
-            if row[4] == 0:
+            if row_request.status == 0:
                 status = 'Инициализирован'
-            elif row[4] == 1:
+            elif row_request.status == 1:
                 status = "В обработке"
-            elif row[4] == 2:
+            elif row_request.status == 2:
                 status = "Завершен"
             else:
                 status = "Неопределен"
             # Добавляем элемент в таблицу
-            items_for_table.append(Item(id_n, row[0], row[1], row[2], status, vac_numbers, row[5]))
+            items_for_table.append(Item(id_n, row_request.id, row_request.region,
+                                        row_request.text_request, status, vac_numbers, row_request.created))
             id_n += 1
         return items_for_table
 
@@ -170,12 +177,20 @@ def requests():
             # Берем регион из проверки
             region = j_result["items"][0]["text"]
             # Вставляем запрос в БД для обработки
-            cur = g.db.cursor()
-            sql = "INSERT INTO requests (user_id,region,text_request,status,created) VALUES (?,?,?,?, datetime('now', 'localtime'))"
-            cur.execute(sql,(session["user_id"], region, text_request,0))
-            g.db.commit()
+            request_db = Request(user_id=session["user_id"],
+                                 region=region,
+                                 text_request=text_request,
+                                 status=0,
+                                 created=datetime.now())
+            db_session.add(request_db)
+            db_session.commit()
             flash("Запрос отправлен на обработку. Его состояние можно отслеживать в истории.")
     else:
         # Если пользователь не авторизован то отправляем его в Login
         return redirect("login")
     return render_template("requests.html")
+
+
+
+
+
